@@ -69,10 +69,12 @@
 					div.style.top = '-16px';
 					div.id = newPlayer.name;
 					div.textContent = newPlayer.name + ": " + newPlayer.score;
+					chat.value += newPlayer.name + " has joined the game.\n";
 				}
 			}
 			squares = data.squares;
 			draw();
+			
 		 }
 		 
 		 function updateSquares(data){
