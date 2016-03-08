@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        "use strict";
+    
+        var canvas;
+        var ctx;
+        var socket; 
+		var mousePos;
+		//var score = 0;		
+		var draws = {};	
+		var squares = [];
+		var users ={};		
+		var player = {
+			name: "",
+			score: 0
+		}
+		
+        var square = {
+            x: 0, 
+            y: 0, 
+            height: 100, 
+            width: 100,
+			color: "black"
+			// red - "#FF0000"
+        };
+		
+		function setCalls(){
+
+			var time = new Date().getTime();			
+			score++;
+
+			//draws[time] = {x: mousePos.x - 50, y: mousePos.y - 50, width: 100, height: 100, color: "black"};
+
+			//time = new Date().getTime();
+
+			var coords = {x: mousePos.x - 50, y: mousePos.y - 50, width: 100, height: 100, color: "red"};
+			//{x: 0, y:0, width:100, height:100};
+			socket.emit('draw', {time: time, coords: coords});
+		 }
+		 function handleMessage(data){
+			draws[data.time] = data.coords;
+			draw();
+		 }
+		 
+		function connectUser(data){
+			
+			users[data.name] = data.name;
+			var div = document.createElement('div');
+			document.body.appendChild(div);
+			div.style.left = '32px'; div.style.top = '-16px';
+			div.id = data.name;
+			div.textContent = data.name + ": " + data.score;
+			// div.parentNode.removeChild(div);			
+		 }
+		 
+		 function updateUsers(data){
+			var keys = Object.keys(data.users);
+			for(var i = 0; i < keys.length; i++){
+				if(!users[keys[i]]){
+					var newPlayer = data.users[keys[i]];
+					users[newPlayer.name] = newPlayer.name;
+					var parentDiv = document.getElementById('players');
+					var div = document.createElement('div');
+					parentDiv.appendChild(div);
+					div.style.left = '32px'; 
+					div.style.top = '-16px';
+					div.id = newPlayer.name;
+					div.textContent = newPlayer.name + ": " + newPlayer.score;
+				}
+			}
+			squares = data.squares;
+			draw();
+		 }
+		 
+		 function updateSquares(data){
+			squares = data;
+			draw();
+		 }
+
+        
+		function draw(){
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			
+			for(var i = 0; i < squares.length; i++){
+				var drawCall = squares[i];				
+				ctx.fillStyle = drawCall.color;
+				ctx.fillRect(drawCall.x, drawCall.y, drawCall.width, drawCall.height);
+			}
+			
+		}
+		
+		function getMousePos(canvas, evt) {
+			var rect = canvas.getBoundingClientRect();
+			return {
+			  x: evt.clientX - rect.left,
+			  y: evt.clientY - rect.top
+			};
+        }
+	   
+	    function updateScore(data){
+			var keys = Object.keys(data);
+			for(var i = 0; i < keys.length; i++){
+				if(users[keys[i]] != null){
+					var newPlayer = data[keys[i]];
+					var div = document.getElementById(newPlayer.name);
+					div.textContent = newPlayer.name + ": " + newPlayer.score;
+				}
+			}
+	    }
+		
+		function updateChat(data){
+			chat.value += data.name + " clicked the square first!\n" +
+			data.name + "'s new score: " + 	data.score + "\n";
+		}
+		
+		function removeUser(data){
+			var div = document.getElementById(data);
+			div.parentNode.removeChild(div);
+			delete users[data];
+			chat.value += data + " has left the game. :(\n";
+		}
+		
+		function isRect(mousePos){
+			console.log(squares.length);
+			for(var i = 0; i < squares.length; i++){
+				if(mousePos.x >= squares[i].x && mousePos.x <= squares[i].x + 100 &&
+				   mousePos.y >= squares[i].y && mousePos.y <= squares[i].y + 100){
+					socket.emit('updateSquares', i);
+					return true;
+				}
+			}
+			return false;
+		}	
+		
+		function createSquare(){
+			var time = new Date().getTime();
+			var x = Math.floor(Math.random()*(300-10)+10); //random x position
+			var y = Math.floor(Math.random()*(300-10)+10); //random y position
+			var square = {x: x, y: y, width: 100, height: 100, color: "black"};					
+			socket.emit('draw', square);
+			draw();
+		}
+		
+		function connectSocket(e){
+			socket = io.connect();
+            chat.value = "";
+            socket.on('connect', function () {
+				console.log("connected");
+				
+				var user = document.querySelector("#username").value;
+				if(!user) {
+					user = 'unknown';
+				}
+				console.log(user);
+				player.name = user;								
+				socket.emit('join', {name: user, score: 0});
+				/*
+				setInterval(function (){
+					var time = new Date().getTime();
+					var x = Math.floor(Math.random()*(300-10)+10); //random x position
+					var y = Math.floor(Math.random()*(300-10)+10); //random y position
+					var square = {x: x, y: y, width: 100, height: 100, color: "black"};					
+					socket.emit('draw', square);
+					draw();
+					}, 4000);
+				*/
+				createSquare();
+            }); 
+			
+			socket.on('joined', connectUser);
+			socket.on('updateUsers', updateUsers);
+			socket.on('updateScore', updateScore);
+			socket.on('removeUser', removeUser);
+			socket.on('updateSquares', updateSquares);
+			socket.on('updateChat', updateChat);
+			
+				
+		}
+
+        function init() {
+			var connect = document.querySelector("#connect");
+			connect.addEventListener('click', connectSocket);
+			
+            canvas = document.querySelector("#canvas");
+            ctx = canvas.getContext("2d");
+			
+			canvas.onmouseup = function(e){
+				console.log("Mouse up!");
+				mousePos = getMousePos(canvas, e);
+				if(isRect(mousePos)){
+					player.score++;
+					socket.emit('updateScore', player);
+					createSquare();
+				}
+			}			
+                           
+        }
+
+      window.onload = init;
+    </script>
+</head>
+<body>
+<label for="user">Username:</label>
+	<input id="username" name="user" type="text"/>
+	<input id="connect" type='button' value='connect'/>
+    <canvas id="canvas" height="500" width="500">Please use an HTML 5 browser</canvas>
+	<div id='players'> </div>
+	<textarea id="chat" rows="20" cols="40" readonly> </textarea>	
+</body>
+</html>
